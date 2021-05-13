@@ -108,7 +108,8 @@ def diagnostic_plots(cube, xcoords, ycoords, line0, pts):
 # Plot the perpendicular line
     perp_line_x = [pts[i][0] for i in list(range(len(pts)))]
     perp_line_y = [pts[i][1] for i in list(range(len(pts)))]
-    plt.plot(perp_line_x, perp_line_y, marker='^', markersize='2', linestyle='-', color='red')
+    plt.plot([perp_line_x[0], perp_line_x[-1]], [perp_line_y[0], perp_line_y[-1]],
+        marker='^', markersize='2', linestyle='-', color='red')
 
     plt.subplot(2,1,2)
     xvalues = list(range(len(perp_line_x)))
@@ -122,7 +123,10 @@ def diagnostic_plots(cube, xcoords, ycoords, line0, pts):
 def main():
 
     datadir = '/home/h03/hadmi/Python/MedGOLD/cold_air_pooling/data/'
-    distance = 10
+
+# distance is in pixels, roughly 90 m per pixel
+    distance = 30
+
     elev_filename = 'srtm_douro.nc'
     cube = read_srtm_data(datadir, elev_filename)
 
