@@ -39,10 +39,10 @@ from PyDEM.pydem.dem_processing import DEMProcessor
 import matplotlib.pyplot as plt
 
 
-def read_srtm(datadir, filename):
+def read_srtm(datadir, resolution):
 
 # Filename containing the elevation data
-
+    filename = f'srtm_douro_{resolution}.nc'
     cube = iris.load_cube(os.path.join(datadir, filename))
 
     return cube
@@ -52,7 +52,8 @@ def make_connectivity_matrix(cube):
     '''
     Gets the connectivity matrix from elevation data
 
-    cube -- An Iris cube containing the elevation data
+    :param cube: An Iris cube containing the elevation data
+    :returns: The connectivity matrix and the elevation data
     '''
 
     elev = cube.data
@@ -94,9 +95,9 @@ def find_coords_drainage_channel(A, x, y, nx):
     cols = B.col
     data = B.data
 
-    print('cols = ', cols)
-    print('rows = ', rows)
-    print('data = ', data)
+#   print('cols = ', cols)
+#   print('rows = ', rows)
+#   print('data = ', data)
 
 # Cell number of starting point.
     cell_no = nx*y + x
@@ -137,15 +138,29 @@ def find_coords_drainage_channel(A, x, y, nx):
     return (i, j)
 
 
+def euclidian_distance(x0, y0, x1, y1):
+    '''
+    Calculates the Euclidian distance between two points
+
+    :param x0, y0: x, y values of first point
+    :param x1, y1: x, y values of second point
+    '''
+
+    return np.sqrt((x1 - x0)**2 + (y1 - y0)**2)
+
+
 def main():
 
-    datadir = '/home/h03/hadmi/Python/MedGOLD/cold_air_pooling/data/'
+# Select resolution of SRTM data, 30m or 90m.
+    srtm_resolution = '90m'
+    datadir_in = '/data/users/hadmi/SRTM/'
+    datadir_out = '/home/h03/hadmi/Python/MedGOLD/cold_air_pooling/data/'
 
     test_run = False
 
     if test_run:
 # For testing, use sample matrix from pyDEM paper
-# x, y are the coordinates of the highest point
+# x=0, y=0 are the coordinates of the pixel with the highest elevation
         x = 0
         y = 0
         data = [0.3, 0.7, 1.0, 1.0, 1.0, 0.4, 0.6, 1.0, 1.0, 1.0]
@@ -155,8 +170,7 @@ def main():
         nx = 3
 
     else:
-        filename = 'srtm_douro.nc'
-        cube = read_srtm(datadir, filename)
+        cube = read_srtm(datadir_in, srtm_resolution)
 
 # Coordinates of top of one of the tributaries of the Douro
         x = 314
@@ -172,18 +186,52 @@ def main():
     i, j = find_coords_drainage_channel(A, x, y, nx)
     print('Found drainage channel coords')
 
+# Plot the elevation as a function of the position along the tributary
+    npts = len(i)
+    xc = list(range(npts))
+    ydata = [cube.data[j[k], i[k]] for k in xc]
+# reverse the elevation data so the left-hand side will be the lowest end of the valley
+    ydata = ydata[::-1]
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    ax.plot(xc, ydata, marker='s', markersize=2, mfc='black', mec='black', linestyle='-', color='green')
+    ax.set_title('Elevation along tributary')
+    plt.show()
+
+# Owing to 'flat' areas, and the particular method used within pyDEM, the
+# valley coordinates returned from the connectivity matrix are not necessarily
+# contiguous.
+# Fill in the gaps by tracing a route between pixels following a line of lowest elevations
+#   ifill, jfill = fill_in_missing_points(i, j, cube.data)
+
 # Write the valley coordinates as comma-separated pairs, which are easily
 # read in directly to a numpy array using np.genfromtxt
-    ofilename = f'tributary_{x}_{y}_coords.dat'
-    with open(os.path.join(datadir, ofilename), 'w') as ofp:
-        for k in list(range(len(i))):
-            s = '{:d},{:d}\n'.format(i[k], j[k])
-            ofp.write(s)
+#   ofilename = f'tributary_{x}_{y}_coords.dat'
+#   with open(os.path.join(datadir_out, ofilename), 'w') as ofp:
+#       for k in list(range(len(i))):
+#           s = '{:d},{:d}\n'.format(i[k], j[k])
+#           ofp.write(s)
 
 # Plot the coordinates of the valley on the elevation data, to check all has gone well.
+    n = 11
     fig = plt.figure()
+    plt.subplot(2,1,1)
     plt.imshow(elev)
+#   plt.plot(ifill, jfill, marker='o', markersize=2, linestyle='None', color='white')
     plt.plot(i, j, marker='o', markersize=2, linestyle='None', color='red')
+    plt.subplot(2,1,2)
+    left_edge = min(i[:n])
+    right_edge = max(i[:n])
+    top_edge = max(j[:n])
+    bottom_edge = min(j[:n])
+    elev_region = elev[bottom_edge:top_edge+1, left_edge:right_edge+1]
+    plt.imshow(elev_region)
+    i_region = i[:n] - left_edge
+    j_region = j[:n] - bottom_edge
+    plt.plot(i_region, j_region, marker='o', markersize=2, linestyle='None', color='red')
+    print([cube.data[j[k], i[k]] for k in list(range(n))])
+    print(elev_region.astype(int))
     plt.show()
 
 
