@@ -138,6 +138,116 @@ def find_coords_drainage_channel(A, x, y, nx):
     return (i, j)
 
 
+def fill_in_missing_points(x, y, elev_in):
+    '''
+    Fill in missing points in the valley bottom coordinates. The drainage calculations in
+    pyDEM do not output the coordinates of pixels in flat areas, so need to add them in.
+
+    :param x: list of x-coordinates of the valley pixels
+    :param y: list of y-coordinates of the valley pixels
+    :param elev_in: A 2D numpy array containing the elevation data
+
+    Returns: x, y expanded with the missing points
+    '''
+
+    moore_offsets = [(-1, 0), (-1, 1), (0, 1), (1, 1), (1, 0), (1, -1), (0, -1), (-1, -1)]
+    coords_out = [[x[0], y[0]]]
+    npts = len(x)
+
+# Ensure the elevation data are a numpy array of integers
+    elev = np.asarray(elev_in).astype(int)
+
+    for i in list(range(1, npts)):
+        x0, x1 = [x[i-1], x[i]]
+        y0, y1 = [y[i-1], y[i]]
+        print('Pixels are ',x0,y0,' and ',x1,y1)
+# Max distance between 2 adjacent points is sqrt(2) = 1.41
+        if euclidian_distance(x0, y0, x1, y1) < 1.5:
+# Points are adjacent, just copy them over
+            print('No infilling needed.')
+            coords_out.append([x1, y1])
+        else:
+# Need to fill in the gap by choosing surrounding pixel with the lowest elevation
+# Check the elevations of the pixels surrounding point x0,y0 == x[i-1], y[i-1]
+            print('Infilling from ', x0, y0, ' to ', x1, y1)
+            coords_old = [[x0, y0]]
+            flag = True
+            while flag:
+                elev_surround = []
+                elev0 = elev[y0, x0]
+                print('Central pixel = ', x0, y0, 'elev = ', elev0)
+# Calculate the differences in elevations between the central pixel and the 8 surrounding pixels.
+# Negative values means a surrounding pixel has a lower elevation than the central pixel
+                for n, neighbour in enumerate(moore_offsets):
+                    dx, dy = neighbour
+                    xnew = x0 + dx
+                    ynew = y0 + dy
+                    if ynew >= 0 and xnew >= 0:
+# If this pixel's coordinates equal the pixel just infilled, set the difference to a large
+# value so we don't choose it.
+                        if [xnew, ynew] in coords_old:
+                            e = 9999.0
+                        else:
+                            e = elev[ynew, xnew]
+                    else:
+                        e = 9999.0
+
+                    elev_surround.append(e)
+
+# Find the lowest elevation and how many times it occurs.
+                lowest_elev = min(elev_surround)
+                print('lowest_elev = ',lowest_elev)
+                print('elev_surround = ',elev_surround)
+                n_lowest = elev_surround.count(lowest_elev)
+                if n_lowest == 1:
+                    k = elev_surround.index(lowest_elev)
+                    print('Only 1 pixel with lowest elev, k=',k, 'moore_offsets=',moore_offsets[k] )
+                else:
+# If 2 or more of the surrounding pixels have the same elevation choose the one nearest to
+# pixel at x1, y1.
+                    print('n_lowest = ',n_lowest)
+                    elevs_around = np.array(elev_surround)
+                    l_where_min = (elevs_around == lowest_elev)
+                    print(l_where_min)
+                    print(sum(l_where_min), ' pixels with lowest elev')
+                    i_moore = [idx for idx in list(range(8)) if l_where_min[idx]]
+                    distance = 9999.0
+                    for idx in i_moore:
+                        dx, dy = moore_offsets[idx]
+                        x_pixel = x0 + dx
+                        y_pixel = y0 + dy
+                        d = euclidian_distance(x1, y1, x_pixel, y_pixel)
+                        if d < distance:
+                            distance = d
+                            k = idx
+
+# Calculate the coordinates of the pixel adjacent to x0,y0 with the lowest elevation
+                print('k=',k)
+                dx, dy = moore_offsets[k]
+                xnew = x0 + dx
+                ynew = y0 + dy
+                print('Infilled pixel coordinates: ',xnew,ynew, 'Elev=', elev[ynew,xnew])
+                coords_out.append([xnew,ynew])
+# If this pixel is adjacent to x1,y1, then finish.
+                if euclidian_distance(x1, y1, xnew, ynew) < 1.5:
+                    coords_out.append([x1,y1])
+                    flag = False
+                else:
+                    coords_old.append([xnew, ynew])
+                    xold = x0
+                    yold = y0
+                    x0 = xnew
+                    y0 = ynew
+
+                s = input('Press any key to continue:')
+
+    npts = len(coords_out)
+    xout = [coords_out[k][0] for k in list(range(1, npts))]
+    yout = [coords_out[k][1] for k in list(range(1, npts))]
+
+    return (xout, yout)
+
+
 def euclidian_distance(x0, y0, x1, y1):
     '''
     Calculates the Euclidian distance between two points
@@ -203,7 +313,7 @@ def main():
 # valley coordinates returned from the connectivity matrix are not necessarily
 # contiguous.
 # Fill in the gaps by tracing a route between pixels following a line of lowest elevations
-#   ifill, jfill = fill_in_missing_points(i, j, cube.data)
+    ifill, jfill = fill_in_missing_points(i, j, cube.data)
 
 # Write the valley coordinates as comma-separated pairs, which are easily
 # read in directly to a numpy array using np.genfromtxt
@@ -218,7 +328,7 @@ def main():
     fig = plt.figure()
     plt.subplot(2,1,1)
     plt.imshow(elev)
-#   plt.plot(ifill, jfill, marker='o', markersize=2, linestyle='None', color='white')
+    plt.plot(ifill, jfill, marker='o', markersize=2, linestyle='None', color='white')
     plt.plot(i, j, marker='o', markersize=2, linestyle='None', color='red')
     plt.subplot(2,1,2)
     left_edge = min(i[:n])
