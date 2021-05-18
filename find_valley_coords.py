@@ -170,14 +170,15 @@ def fill_in_missing_points(x, y, elev_in):
 # Need to fill in the gap by choosing surrounding pixel with the lowest elevation
 # Check the elevations of the pixels surrounding point x0,y0 == x[i-1], y[i-1]
             print('Infilling from ', x0, y0, ' to ', x1, y1)
+            print('Elevations are ', elev[y0,x0],' and ', elev[y1,x1])
             coords_old = [[x0, y0]]
             flag = True
             while flag:
                 elev_surround = []
                 elev0 = elev[y0, x0]
                 print('Central pixel = ', x0, y0, 'elev = ', elev0)
-# Calculate the differences in elevations between the central pixel and the 8 surrounding pixels.
-# Negative values means a surrounding pixel has a lower elevation than the central pixel
+                print('Distance to end coordinate = ', euclidian_distance(x0, y0, x1, y1))
+# Get the elevations of the 8 surrounding pixels.
                 for n, neighbour in enumerate(moore_offsets):
                     dx, dy = neighbour
                     xnew = x0 + dx
@@ -196,9 +197,10 @@ def fill_in_missing_points(x, y, elev_in):
 
 # Find the lowest elevation and how many times it occurs.
                 lowest_elev = min(elev_surround)
+                print('elev surrounding ', elev0, ' = ',elev_surround)
                 print('lowest_elev = ',lowest_elev)
-                print('elev_surround = ',elev_surround)
                 n_lowest = elev_surround.count(lowest_elev)
+# NEED TO ADD A CHECK HERE FOR THE DISTANCE TO x1,y1 - IF BIGGER CHOOSE NEXT LOWEST ELEVATION
                 if n_lowest == 1:
                     k = elev_surround.index(lowest_elev)
                     print('Only 1 pixel with lowest elev, k=',k, 'moore_offsets=',moore_offsets[k] )
@@ -226,16 +228,14 @@ def fill_in_missing_points(x, y, elev_in):
                 dx, dy = moore_offsets[k]
                 xnew = x0 + dx
                 ynew = y0 + dy
-                print('Infilled pixel coordinates: ',xnew,ynew, 'Elev=', elev[ynew,xnew])
+                print('New pixel coordinates: ',xnew,ynew, 'Elev=', elev[ynew,xnew])
                 coords_out.append([xnew,ynew])
 # If this pixel is adjacent to x1,y1, then finish.
                 if euclidian_distance(x1, y1, xnew, ynew) < 1.5:
                     coords_out.append([x1,y1])
                     flag = False
+                    print('Finished infilling, final coords are ', x1, y1,' elev=', elev[y1,x1])
                 else:
-                    coords_old.append([xnew, ynew])
-                    xold = x0
-                    yold = y0
                     x0 = xnew
                     y0 = ynew
 
