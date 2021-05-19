@@ -179,7 +179,7 @@ def count_compass_directions(wd, compass_directions):
     return counts
 
 
-def plot_wind_speeds_dirs(df_s1, df_cap, compass_directions):
+def plot_wind_speeds_dirs(station, df_s1, df_cap, compass_directions):
     '''
     Analyses wind speeds and directions on CAP days, non-CAP days, all days
     Calculates the mean wind speed and direction in each night.
@@ -195,7 +195,7 @@ def plot_wind_speeds_dirs(df_s1, df_cap, compass_directions):
     df_s1_cap = df_s1.loc[df_s1['date'].isin(cap_dates)]
     df_s1_nocap = df_s1.loc[~df_s1['date'].isin(cap_dates)]
 
-    fig = plt.figure()
+    fig = plt.figure(figsize=(8,8))
 
 # Histograms of wind speeds on CAP days and non-CAP days
     column_name = 'wind speed'
@@ -263,7 +263,10 @@ def plot_wind_speeds_dirs(df_s1, df_cap, compass_directions):
 
     plt.subplots_adjust(hspace=0.5)
 
-    plt.show()
+    fpath = '/home/h03/hadmi/Python/MedGOLD/cold_air_pooling/figures/'
+    filename = '{}.png'.format(station)
+    plt.savefig(os.path.join(fpath, filename), dpi=150)
+    plt.close()
 
 
 def get_station_coords(station):
@@ -295,10 +298,11 @@ def main():
 
     df_night = calc_nighttime_means(df_sairrao1, sairrao1_coords)
 
-    for cap_file in ['CAP_LEDA3_LEDA2.csv', 'CAP_SEIXO_SAIRRAO3.csv']:
+    sta_extra = ['leda', 'sairrao']
+    for i, cap_file in enumerate(['CAP_LEDA3_LEDA2.csv', 'CAP_SEIXO_SAIRRAO3.csv']):
         df_cap = read_cap_events(datadir, cap_file)
         print(df_cap[:10])
-        plot_wind_speeds_dirs(df_night, df_cap, compass_directions)
+        plot_wind_speeds_dirs('_'.join([station_name, sta_extra[i]]), df_night, df_cap, compass_directions)
 
 
 if __name__ == '__main__':
