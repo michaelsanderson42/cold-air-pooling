@@ -203,12 +203,11 @@ def plot_wind_speeds_dirs(df_s1, df_cap, compass_directions):
     ws = df_s1_cap[column_name].to_numpy()
     bin_max = np.ceil(np.max(ws))
     bins = np.arange(0, bin_max+1, 1)
-    n, bin_edges, _ = ax.hist(ws, bins, weights=np.ones(len(ws))/len(ws), width=0.8)
-    ax.yaxis.set_major_formatter(PercentFormatter(0))
-    ax.set_xtitle('Wind Speed / m s-1')
-    ax.set_ytitle('Percent')
+    n, bin_edges, _ = ax.hist(ws, bins, width=0.8)
+    ax.set_xlabel('Wind Speed / m s-1')
+    ax.set_ylabel('Count')
     ax.set_title('CAP days')
-#   ax.set_ylim(0, 1200)
+    ax.set_ylim(0, 1200)
 
     bx = fig.add_subplot(2, 2, 2)
     ws = df_s1_nocap[column_name].to_numpy()
@@ -216,7 +215,9 @@ def plot_wind_speeds_dirs(df_s1, df_cap, compass_directions):
     bins = np.arange(0, bin_max+1, 1)
     n, bin_edges, _ = bx.hist(ws, bins, width=0.8)
     bx.set_title('Non-CAP days')
-    ax.set_ylim(0, 1200)
+    bx.set_xlabel('Wind Speed / m s-1')
+    bx.set_ylabel('Count')
+    bx.set_ylim(0, 1200)
 
 #   cx = fig.add_subplot(3, 3, 3)
 #   ws = df_s1[column_name].to_numpy()
@@ -225,7 +226,7 @@ def plot_wind_speeds_dirs(df_s1, df_cap, compass_directions):
 #   n, bin_edges, _ = cx.hist(ws, bins, width=0.8)
 #   cx.set_title('All days')
 
-# Histograms of wind directions on CAP days, non-CAP days, all days
+# Histograms of wind directions on CAP days and non-CAP days
     column_name = 'direction'
     xticks = list(range(1, len(compass_directions)+1))
     dx = fig.add_subplot(2, 2, 3)
