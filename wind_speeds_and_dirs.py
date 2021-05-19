@@ -197,17 +197,20 @@ def plot_wind_speeds_dirs(df_s1, df_cap, compass_directions):
 
     fig = plt.figure()
 
-# Histograms of wind speeds on CAP days, non-CAP days, all days
+# Histograms of wind speeds on CAP days and non-CAP days
     column_name = 'wind speed'
-    ax = fig.add_subplot(3, 3, 1)
+    ax = fig.add_subplot(2, 2, 1)
     ws = df_s1_cap[column_name].to_numpy()
     bin_max = np.ceil(np.max(ws))
     bins = np.arange(0, bin_max+1, 1)
-    n, bin_edges, _ = ax.hist(ws, bins, width=0.8)
+    n, bin_edges, _ = ax.hist(ws, bins, weights=np.ones(len(ws))/len(ws), width=0.8)
+    ax.yaxis.set_major_formatter(PercentFormatter(0))
+    ax.set_xtitle('Wind Speed / m s-1')
+    ax.set_ytitle('Percent')
     ax.set_title('CAP days')
-    ax.set_ylim(0, 1200)
+#   ax.set_ylim(0, 1200)
 
-    bx = fig.add_subplot(3, 3, 2)
+    bx = fig.add_subplot(2, 2, 2)
     ws = df_s1_nocap[column_name].to_numpy()
     bin_max = np.ceil(np.max(ws))
     bins = np.arange(0, bin_max+1, 1)
@@ -215,17 +218,17 @@ def plot_wind_speeds_dirs(df_s1, df_cap, compass_directions):
     bx.set_title('Non-CAP days')
     ax.set_ylim(0, 1200)
 
-    cx = fig.add_subplot(3, 3, 3)
-    ws = df_s1[column_name].to_numpy()
-    bin_max = np.ceil(np.max(ws))
-    bins = np.arange(0, bin_max+1, 1)
-    n, bin_edges, _ = cx.hist(ws, bins, width=0.8)
-    cx.set_title('All days')
+#   cx = fig.add_subplot(3, 3, 3)
+#   ws = df_s1[column_name].to_numpy()
+#   bin_max = np.ceil(np.max(ws))
+#   bins = np.arange(0, bin_max+1, 1)
+#   n, bin_edges, _ = cx.hist(ws, bins, width=0.8)
+#   cx.set_title('All days')
 
 # Histograms of wind directions on CAP days, non-CAP days, all days
     column_name = 'direction'
     xticks = list(range(1, len(compass_directions)+1))
-    dx = fig.add_subplot(3, 3, 4)
+    dx = fig.add_subplot(2, 2, 3)
 # Get the cardinal or ordinal points which corresponds to the mean wind directions
     wd = df_s1_cap[column_name].tolist()
     _, dirn_summary = convert_direction_to_compass(wd, compass_directions)
@@ -236,24 +239,24 @@ def plot_wind_speeds_dirs(df_s1, df_cap, compass_directions):
     dx.set_title('CAP days')
     dx.set_ylim(0, 600)
 
-    ex = fig.add_subplot(3, 3, 5)
+    ex = fig.add_subplot(2, 2, 4)
     wd = df_s1_nocap[column_name].tolist()
     _, dirn_summary = convert_direction_to_compass(wd, compass_directions)
     counts = [dirn_summary[c] for c in compass_directions]
     ex.bar(xticks, counts, width=0.8)
     ex.set_xticks(xticks)
     ex.set_xticklabels(compass_directions)
-    ex.set_title('CAP days')
+    ex.set_title('Non-CAP days')
     ex.set_ylim(0, 600)
 
-    fx = fig.add_subplot(3, 3, 6)
-    wd = df_s1[column_name].tolist()
-    _, dirn_summary = convert_direction_to_compass(wd, compass_directions)
-    counts = [dirn_summary[c] for c in compass_directions]
-    fx.bar(xticks, counts, width=0.8)
-    fx.set_xticks(xticks)
-    fx.set_xticklabels(compass_directions)
-    fx.set_title('CAP days')
+#   fx = fig.add_subplot(3, 3, 6)
+#   wd = df_s1[column_name].tolist()
+#   _, dirn_summary = convert_direction_to_compass(wd, compass_directions)
+#   counts = [dirn_summary[c] for c in compass_directions]
+#   fx.bar(xticks, counts, width=0.8)
+#   fx.set_xticks(xticks)
+#   fx.set_xticklabels(compass_directions)
+#   fx.set_title('CAP days')
 
     plt.show()
 
