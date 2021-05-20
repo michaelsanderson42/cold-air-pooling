@@ -155,12 +155,14 @@ def convert_direction_to_compass(wd_in, compass_directions):
     return compass_dirs, dirn_summary
 
 
-def read_cap_events(datadir, filename):
+def read_cap_events(datadir, filename, c_limit=1.0, mdi=99.99):
     '''
-    Read in a file listing all CAP events into a dataframe.
+    Read in a file containing all temperature differences into a dataframe
+    Return a subset containg dates when cold air pooling events occurred.
     '''
 
     df = pd.read_csv(os.path.join(datadir, filename))
+    df = df.loc[(df['diff'] >= c_limit) & (df['hour'] != mdi)]
     df.set_index('date', inplace=True)
 
     return df
@@ -299,8 +301,9 @@ def main():
     df_night = calc_nighttime_means(df_sairrao1, sairrao1_coords)
 
     sta_extra = ['leda', 'sairrao']
-    for i, cap_file in enumerate(['CAP_LEDA3_LEDA2.csv', 'CAP_SEIXO_SAIRRAO3.csv']):
-        df_cap = read_cap_events(datadir, cap_file)
+    for i, cap_file in enumerate(['LEDA3_LEDA2.csv', 'SEIXO_SAIRRAO3.csv']):
+        filename = '_'.join(['nighttime_tdiffs', cap_file])
+        df_cap = read_cap_events(datadir, filename)
         print(df_cap[:10])
         plot_wind_speeds_dirs('_'.join([station_name, sta_extra[i]]), df_night, df_cap, compass_directions)
 
