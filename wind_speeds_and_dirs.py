@@ -181,7 +181,7 @@ def count_compass_directions(wd, compass_directions):
     return counts
 
 
-def plot_wind_speeds_dirs(station, df_s1, df_cap, compass_directions):
+def plot_wind_speeds_dirs(station, df_s1, df_cap, compass_directions, plot_info):
     '''
     Analyses wind speeds and directions on CAP days, non-CAP days, all days
     Calculates the mean wind speed and direction in each night.
@@ -190,6 +190,9 @@ def plot_wind_speeds_dirs(station, df_s1, df_cap, compass_directions):
     :param df_cap: Dataframe holding dates of CAP events
     '''
 
+    fig, i, nrows, ncols, sta_name = plot_info
+    sta_name = sta_name.capitalize()
+
     cap_dates = df_cap.index.values
 
 # Drop rows (i.e. dates) with missing data
@@ -197,29 +200,32 @@ def plot_wind_speeds_dirs(station, df_s1, df_cap, compass_directions):
     df_s1_cap = df_s1.loc[df_s1['date'].isin(cap_dates)]
     df_s1_nocap = df_s1.loc[~df_s1['date'].isin(cap_dates)]
 
-    fig = plt.figure(figsize=(8,8))
-
 # Histograms of wind speeds on CAP days and non-CAP days
     column_name = 'wind speed'
-    ax = fig.add_subplot(2, 2, 1)
+    plot_num = i * 2
+    ax = fig.add_subplot(nrows, ncols, plot_num+1)
     ws = df_s1_cap[column_name].to_numpy()
     bin_max = np.ceil(np.max(ws))
     bins = np.arange(0, bin_max+1)
     n, bin_edges, _ = ax.hist(ws, bins, width=0.8, align='mid', color='grey')
-    ax.set_title('CAP days')
+    if plot_num == 0:
+        ax.set_title('CAP days')
     ax.set_xlabel('Wind Speed / m s-1')
     ax.set_ylabel('Count')
     ax.set_ylim(0, 800)
+    ax.text(0.5, 0.90, sta_name, ha='center', transform=ax.transAxes)
 
-    bx = fig.add_subplot(2, 2, 2)
+    bx = fig.add_subplot(nrows, ncols, plot_num+2)
     ws = df_s1_nocap[column_name].to_numpy()
     bin_max = np.ceil(np.max(ws))
     bins = np.arange(0, bin_max+1)
     n, bin_edges, _ = bx.hist(ws, bins, width=0.8, align='mid', color='grey')
-    bx.set_title('Non-CAP days')
+    if plot_num == 0:
+        bx.set_title('Non-CAP days')
     bx.set_xlabel('Wind Speed / m s-1')
-    bx.set_ylabel('Count')
+#   bx.set_ylabel('Count')
     bx.set_ylim(0, 800)
+    bx.text(0.5, 0.90, sta_name, ha='center', transform=bx.transAxes)
 
 #   cx = fig.add_subplot(3, 3, 3)
 #   ws = df_s1[column_name].to_numpy()
@@ -229,9 +235,10 @@ def plot_wind_speeds_dirs(station, df_s1, df_cap, compass_directions):
 #   cx.set_title('All days')
 
 # Histograms of wind directions on CAP days and non-CAP days
+    plot_num = 4 + i * 2
     column_name = 'direction'
     xticks = list(range(1, len(compass_directions)+1))
-    dx = fig.add_subplot(2, 2, 3)
+    dx = fig.add_subplot(nrows, ncols, plot_num+1)
 # Get the cardinal or ordinal points which corresponds to the mean wind directions
     wd = df_s1_cap[column_name].tolist()
     _, dirn_summary = convert_direction_to_compass(wd, compass_directions)
@@ -241,9 +248,10 @@ def plot_wind_speeds_dirs(station, df_s1, df_cap, compass_directions):
     dx.set_xticks(xticks)
     dx.set_xticklabels(compass_directions)
     dx.set_ylabel('Percent')
-    dx.set_title('CAP days')
+    dx.set_ylim(0, 42)
+    dx.text(0.5, 0.90, sta_name, ha='center', transform=dx.transAxes)
 
-    ex = fig.add_subplot(2, 2, 4)
+    ex = fig.add_subplot(nrows, ncols, plot_num+2)
     wd = df_s1_nocap[column_name].tolist()
     _, dirn_summary = convert_direction_to_compass(wd, compass_directions)
     sc = sum(dirn_summary.values())
@@ -251,8 +259,9 @@ def plot_wind_speeds_dirs(station, df_s1, df_cap, compass_directions):
     ex.bar(xticks, counts, width=0.8)
     ex.set_xticks(xticks)
     ex.set_xticklabels(compass_directions)
-    ex.set_ylabel('Percent')
-    ex.set_title('Non-CAP days')
+#   ex.set_ylabel('Percent')
+    ex.set_ylim(0, 42)
+    ex.text(0.5, 0.90, sta_name, ha='center', transform=ex.transAxes)
 
 #   fx = fig.add_subplot(3, 3, 6)
 #   wd = df_s1[column_name].tolist()
@@ -263,12 +272,7 @@ def plot_wind_speeds_dirs(station, df_s1, df_cap, compass_directions):
 #   fx.set_xticklabels(compass_directions)
 #   fx.set_title('CAP days')
 
-    plt.subplots_adjust(hspace=0.5)
-
-    fpath = '/home/h03/hadmi/Python/MedGOLD/cold_air_pooling/figures/'
-    filename = '{}.png'.format(station)
-    plt.savefig(os.path.join(fpath, filename), dpi=150)
-    plt.close()
+    plt.subplots_adjust(hspace=0.3)
 
 
 def get_station_coords(station):
@@ -300,12 +304,22 @@ def main():
 
     df_night = calc_nighttime_means(df_sairrao1, sairrao1_coords)
 
+    fig = plt.figure(figsize=(6,12))
+    nrows = 4
+    ncols = 2
+
     sta_extra = ['leda', 'sairrao']
     for i, cap_file in enumerate(['LEDA3_LEDA2.csv', 'SEIXO_SAIRRAO3.csv']):
         filename = '_'.join(['nighttime_tdiffs', cap_file])
         df_cap = read_cap_events(datadir, filename)
         print(df_cap[:10])
-        plot_wind_speeds_dirs('_'.join([station_name, sta_extra[i]]), df_night, df_cap, compass_directions)
+        plot_wind_speeds_dirs('_'.join([station_name, sta_extra[i]]), df_night, df_cap,
+            compass_directions, (fig, i, nrows, ncols, sta_extra[i]))
+
+    fpath = '/home/h03/hadmi/Python/MedGOLD/cold_air_pooling/figures/'
+    filename = 'Fig6_sairrao1.png'
+    plt.savefig(os.path.join(fpath, filename), dpi=150)
+    plt.close()
 
 
 if __name__ == '__main__':
