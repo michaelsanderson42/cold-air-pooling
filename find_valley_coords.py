@@ -35,7 +35,8 @@ import os
 import numpy as np
 import iris
 from scipy import sparse
-from PyDEM.pydem.dem_processing import DEMProcessor
+from pyDEM.pydem.dem_processing import DEMProcessor
+from Astar import Graph
 import matplotlib.pyplot as plt
 
 
@@ -129,18 +130,70 @@ def find_coords_drainage_channel(A, x, y, nx):
         cell_numbers.append(idx)
     
     # Convert the cell numbers to (i,j) coordinates
-    i = []
-    j = []
-    for c in cell_numbers:
-        i.append(c % nx)
-        j.append(c // nx)
+#   i = []
+#   j = []
+    i = [c % nx for c in cell_numbers]
+    j = [c // nx for c in cell_numbers]
+#   for c in cell_numbers:
+#       i.append(c % nx)
+#       j.append(c // nx)
     
     return (i, j)
 
 
+def fill_in_points_astar(x, y, cube):
+    '''
+    Fills in missing points in the valley bottom coordinates using the A* algorithm.
+
+    :param x: list of x-coordinates of the valley pixels
+    :param y: list of y-coordinates of the valley pixels
+    :param elev: A 2D numpy array containing the elevation data
+
+    Returns: x, y expanded with the missing points
+    '''
+
+    coords_out = [[x[0], y[0]]]
+    npts = len(x)
+
+# Initialise data for the A* algorithm.
+    graph1 = Graph(cube)
+
+    for i in list(range(1, npts)):
+        x0, x1 = [x[i-1], x[i]]
+        y0, y1 = [y[i-1], y[i]]
+        print('Pixels are ',x0,y0,' and ',x1,y1)
+# Max distance between 2 adjacent points is sqrt(2) = 1.41
+        edist = euclidian_distance(x0, y0, x1, y1)
+        if edist < 1.5:
+# Points are adjacent, just copy them over
+            print('No infilling needed.')
+            coords_out.append([x1, y1])
+#       elif edist > 1.5 and edist < sqrt(5):
+# Fill in single space using pixel with lowest elevation
+        else:
+# Fill in the gap using the A* algorithm
+            print('Infilling from ', x0, y0, ' to ', x1, y1)
+            start_node = graph1.get_node(x0, y0)
+            stop_node = graph1.get_node(x1, y1)
+            reconst_path = graph1.a_star_algorithm(start_node, stop_node)
+# The filled-in path includes the start and end nodes
+            for the_node in reconst_path[1:]:
+                xinfill, yinfill = graph1.get_coords(the_node)
+                coords_out.append([xinfill, yinfill])
+
+    npts = len(coords_out)
+    xout = [coords_out[k][0] for k in list(range(1, npts))]
+    yout = [coords_out[k][1] for k in list(range(1, npts))]
+
+    return xout, yout
+
+
 def fill_in_missing_points(x, y, elev_in):
     '''
-    Fill in missing points in the valley bottom coordinates. The drainage calculations in
+    Fill in missing points in the valley bottom coordinates. This algorithm finds the adjacent
+    point with the lowest altitude, sets the new location to that point, and continues until
+    the gap is filled.
+    The drainage calculations in
     pyDEM do not output the coordinates of pixels in flat areas, so need to add them in.
 
     :param x: list of x-coordinates of the valley pixels
@@ -293,6 +346,7 @@ def main():
 
     print('Read in elev data, calculated connectivity matrix')
 
+# Find the coordinates of the tributary ("drainage channel") from the connectivity matrix
     i, j = find_coords_drainage_channel(A, x, y, nx)
     print('Found drainage channel coords')
 
@@ -313,15 +367,18 @@ def main():
 # valley coordinates returned from the connectivity matrix are not necessarily
 # contiguous.
 # Fill in the gaps by tracing a route between pixels following a line of lowest elevations
-    ifill, jfill = fill_in_missing_points(i, j, cube.data)
+# using the Astar search algorithm.
+# ifill, jfill contain all points in (i,j) plus the infilled points
+#   ifill, jfill = fill_in_missing_points(i, j, cube.data)
+    ifill, jfill = fill_in_points_astar(i, j, cube)
 
 # Write the valley coordinates as comma-separated pairs, which are easily
 # read in directly to a numpy array using np.genfromtxt
-#   ofilename = f'tributary_{x}_{y}_coords.dat'
-#   with open(os.path.join(datadir_out, ofilename), 'w') as ofp:
-#       for k in list(range(len(i))):
-#           s = '{:d},{:d}\n'.format(i[k], j[k])
-#           ofp.write(s)
+    ofilename = f'tributary_{x}_{y}_coords.dat'
+    with open(os.path.join(datadir_out, ofilename), 'w') as ofp:
+        for k in list(range(len(i))):
+            s = '{:d},{:d}\n'.format(i[k], j[k])
+            ofp.write(s)
 
 # Plot the coordinates of the valley on the elevation data, to check all has gone well.
     n = 11
@@ -330,6 +387,7 @@ def main():
     plt.imshow(elev)
     plt.plot(ifill, jfill, marker='o', markersize=2, linestyle='None', color='white')
     plt.plot(i, j, marker='o', markersize=2, linestyle='None', color='red')
+
     plt.subplot(2,1,2)
     left_edge = min(i[:n])
     right_edge = max(i[:n])
@@ -337,6 +395,9 @@ def main():
     bottom_edge = min(j[:n])
     elev_region = elev[bottom_edge:top_edge+1, left_edge:right_edge+1]
     plt.imshow(elev_region)
+    i_region = ifill[:30] - left_edge
+    j_region = jfill[:30] - bottom_edge
+    plt.plot(i_region, j_region, marker='o', markersize=2, linestyle='None', color='white')
     i_region = i[:n] - left_edge
     j_region = j[:n] - bottom_edge
     plt.plot(i_region, j_region, marker='o', markersize=2, linestyle='None', color='red')
