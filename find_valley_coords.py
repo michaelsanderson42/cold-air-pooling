@@ -143,7 +143,7 @@ def find_coords_drainage_channel(A, x, y, nx):
 
 def fill_in_points_astar(x, y, cube):
     '''
-    Fills in missing points in the valley bottom coordinates using the A* algorithm.
+    Fills in missing points in the valley bottom coordinates using the A* search algorithm.
 
     :param x: list of x-coordinates of the valley pixels
     :param y: list of y-coordinates of the valley pixels
@@ -377,7 +377,7 @@ def main():
     ofilename = f'tributary_{x}_{y}_coords.dat'
     with open(os.path.join(datadir_out, ofilename), 'w') as ofp:
         for k in list(range(len(i))):
-            s = '{:d},{:d}\n'.format(i[k], j[k])
+            s = '{:d},{:d}\n'.format(ifill[k], jfill[k])
             ofp.write(s)
 
 # Plot the coordinates of the valley on the elevation data, to check all has gone well.
