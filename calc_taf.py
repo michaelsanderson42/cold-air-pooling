@@ -4,6 +4,7 @@ import iris
 import iris.plot as iplt
 import matplotlib.pyplot as plt
 from scipy.signal import argrelextrema
+import pandas as pd
 
 
 def read_srtm_data(datadir, filename):
@@ -106,6 +107,7 @@ def find_local_maxima(cube, xpts, ypts, centre_point, order=3):
     elev = np.array([cube.data[y,x] for x,y in zip(xpts, ypts)])
     ileft = 99
     iright = 99
+    idx_centre = len(elev) // 2
 
 # Find array indices of the local maxima
     idx_maxima, = argrelextrema(elev, np.greater_equal, order=order)
@@ -114,7 +116,6 @@ def find_local_maxima(cube, xpts, ypts, centre_point, order=3):
 
 # Check the number of maxima - if more than 2, choose points closest to the centre
     if len(idx_maxima) > 2:
-        idx_centre = len(elev) // 2
         for i in list(range(len(idx_maxima)-1)):
             if idx_maxima[i] < idx_centre and idx_maxima[i+1] > idx_centre:
                 ileft = idx_maxima[i]
@@ -122,19 +123,114 @@ def find_local_maxima(cube, xpts, ypts, centre_point, order=3):
 
         idx_maxima = np.array([ileft, iright])
 
-# Choose the lowest of the two maxima as the valley height, and return the elevations
-# equal to or below this maximum.
+# Choose the lowest of the two maxima as the elevation of the top of the side of the valley.
+# Return the elevations # equal to or below this maximum either side of the centre point.
+# These latter data are the elevations of the valley cross-section.
+    atol = 1.0  #  1 m tolerance
     if idx_maxima[0] < 99:
         if elev[idx_maxima[0]] < elev[idx_maxima[1]]:
             v = elev[idx_maxima[0]]
         else:
             v = elev[idx_maxima[1]]
 
-        elev_valley_xsection = elev[(elev <= v)]
+# Find all points either side of the centre point whose elevations are smaller than the valley edge elevation (v)
+# Include a point whose elevation is higher if two points straddle the valley edge elevation.
+        elev_valley_xsection = [elev[idx_centre]]
+        for i in list(range(1, idx_centre)):
+            ileft = idx_centre - i
+            if elev[ileft] <= v:
+                elev_valley_xsection.insert(0, elev[ileft])
+            if elev[ileft] == v:
+                break
+            if elev[ileft] < v and elev[ileft-1] >= v:
+                elev_valley_xsection.insert(0, elev[ileft-1])
+                ileft -= 1
+                break
+        for i in list(range(1, idx_centre)):
+            iright = idx_centre + i
+            if elev[iright] <= v:
+                elev_valley_xsection.append(elev[iright])
+            if elev[iright] == v:
+                break
+            if elev[iright] < v and elev[iright+1] >= v:
+                elev_valley_xsection.append(elev[iright+1])
+                iright += 1
+                break
+
     else:
         elev_valley_xsection = []
+        ileft = 0
+        iright = 0
 
-    return elev_valley_xsection
+#   print('Elevation along perpendicular:')
+#   print(list(elev))
+#   print('v =', v)
+#   print('Elevation along valley cross-section:')
+#   print(list(elev_valley_xsection))
+
+# Diagnostic plot
+#   plot_valley_edges(cube, xpts, ypts, centre_point, v, [ileft, iright])
+
+    return v, elev_valley_xsection
+
+
+def plot_valley_edges(cube, xpts, ypts, centre_point, elev_valley_top, idx_maxima):
+    '''
+    Creates diagnostic plots to check valley cross-sections
+
+    cube -- Iris cube containing DEM for entire Douro valley domain
+    xpts -- x-coordinates (in array indices) of line across valley
+    ypts -- y-coordinates (in array indices) of line across valley
+    centre_point -- Coordinates of point in centre of valley (should be the lowest point)
+    '''
+
+# Create plots to check has worked
+    fig = plt.figure()
+
+# Find the edges of a block of pixels centred on the valley mid-point.
+    lats = cube.coord('latitude').points
+    lons = cube.coord('longitude').points
+    radius = len(xpts) // 2
+    left_edge = lons[centre_point[0] - radius]
+    right_edge = lons[centre_point[0] + radius]
+    top_edge = lats[centre_point[1] + radius]
+    bottom_edge = lats[centre_point[1] - radius]
+
+#   print('centre_point = ', centre_point)
+#   print('bottom-edge: centre_point[1] - radius = ', centre_point[1] - radius)
+#   print('top edge:    centre_point[1] + radius = ', centre_point[1] + radius)
+#   print('lats = ', lats[centre_point[1]-radius: centre_point[1]+radius+1])
+
+    xcoords = [lons[x] for x in xpts]
+    ycoords = [lats[y] for y in ypts]
+
+# Set up constraints and extract the block of pixels
+    cube_region = cube.intersection(longitude=(left_edge, right_edge), latitude=(top_edge, bottom_edge))
+
+# Coordinates of perpendicular line (latitudes and longitudes)
+    xcentre = lons[centre_point[0]]
+    ycentre = lats[centre_point[1]]
+
+# First subplot showing elevations around centre point and the perpendicular line
+    plt.subplot(2,1,1)
+    iplt.pcolormesh(cube_region)
+    plt.plot(xcoords, ycoords, marker='None', markersize=2, linestyle='-', color='white')
+    plt.plot(xcentre, ycentre, marker='o', markersize=2, linestyle='None', color='red')
+
+# Second subplot showing the elevations along the perpendicular line and at the centre point
+    plt.subplot(2,1,2)
+    xvalues = list(range(len(xpts)))
+    xmid = xvalues[len(xvalues) // 2]
+    yvalues = [cube.data[py, px] for px, py in zip(xpts, ypts)]
+    print(yvalues)
+    plt.plot(xvalues, yvalues, 'bo')
+    plt.plot([xvalues[0], xvalues[-1]], [elev_valley_top, elev_valley_top], marker='None', linestyle='--', color='grey')
+    plt.plot(xmid, cube.data[centre_point[1], centre_point[0]], marker='s', linestyle='None', color='green')
+    plt.plot(xvalues[idx_maxima[0]], cube.data[ypts[idx_maxima[0]], xpts[idx_maxima[0]]], marker='<', linestyle='None', color='orange')
+    plt.plot(xvalues[idx_maxima[1]], cube.data[ypts[idx_maxima[1]], xpts[idx_maxima[1]]], marker='>', linestyle='None', color='orange')
+    plt.title('Elevation along perpendicular')
+
+    plt.show()
 
 
 def calculate_taf(cube, xpts, ypts, centre_point):
@@ -145,27 +241,30 @@ def calculate_taf(cube, xpts, ypts, centre_point):
     pts -- 2D list of x,y coords of points across the valley, as [2,n]
     centre_point -- Coordinates of the centre of the valley bottom
 
-    Returns: The TAF
+    Returns: The TAF, valley cross-sectional area, width and height
     '''
 
-# Find the indices of the local maxima along this line, which will be the tops of the valley sides
-    elev_xsection = find_local_maxima(cube, xpts, ypts, centre_point)
+# Find the elevation of the valley top and the subset of the elevations of the transect across the valley.
+    elev_top, elev_xsection = find_local_maxima(cube, xpts, ypts, centre_point)
     if len(elev_xsection) == 0:
         print('Local maxima not found for {:d},{:d}, cannot calculate TAF'.format(centre_point[0], centre_point[1]))
+        W = -99.0
+        H = -99.0
+        A = -99.0
         taf = -99.0
     else:
 
 # Calculate the valley width (W) and height (H); height sometimes labelled D.
-        W = calc_valley_width(elev_xsection, xpts, ypts)
-        H, elev_top = calc_valley_height(elev_xsection)
+        W, H = calc_valley_WH(elev_top, elev_xsection, xpts, ypts)
 
 # Calculate the cross-sectional area of the valley (Ayz) using the Trapezium rule
         A = calc_valley_xsect_area(elev_xsection, xpts, ypts, elev_top)
 
 # TAF = (W / Ayz) / (1/H)
         taf = (W / A) * H
+        print('Width=',W,' Height=',H,' Area=',A, 'TAF=',taf)
 
-    return taf
+    return (W, H, A, taf)
 
 
 def euclidian_distance(xpts, ypts):
@@ -182,36 +281,28 @@ def euclidian_distance(xpts, ypts):
     return np.sqrt((dx*dx) + (dy*dy))
 
 
-def calc_valley_width(elev, xpts, ypts):
+def calc_valley_WH(elev_top, elev, xpts, ypts):
     '''
-    Calculate the width of the valley
+    Calculate the width and height of the valley
 
+    elev_top -- elevation of top of valley
     elev -- 1D array containing the elevation data for the valley cross-section
     xpts -- The x-coordinates of the transect across the valley
     ypts -- The y-coordinates of the transect across the valley
     '''
 
+# Find the lowest point within the valley
+    elev_lo = np.min(elev)
+
+    valley_height = elev_top - elev_lo
+
+# Calculate the valley width
     delta_x = euclidian_distance(xpts[:2], ypts[:2])
     npts = len(elev)
 
-    return delta_x * (npts-1)
+    valley_width = delta_x * (npts-1)
 
-
-def calc_valley_height(elev):
-    '''
-    Calculate the height of the valley
-
-    elev -- 1D array containing the elevation data for the valley cross-section
-    '''
-
-# Find the lowest and highest points within the valley
-    elev_lo = np.min(elev)
-    elev_top = np.max(elev)
-
-# Valley height, often referred to as H or D
-    valley_height = elev_top - elev_lo + 1
-
-    return valley_height, elev_top
+    return (valley_width, valley_height)
 
 
 def calc_valley_xsect_area(elev, xpts, ypts, elev_top):
@@ -224,14 +315,30 @@ def calc_valley_xsect_area(elev, xpts, ypts, elev_top):
     elev_top -- Elevation of the top of the valley sides
     '''
 
-    npts = len(elev)
     delta_x = euclidian_distance(xpts[:2], ypts[:2])
 
 # Heights of the transect across the valley relative to the valley floor
-    h = elev_top - np.array(elev)
-    term0 = np.sum(h[1:npts])
+    if elev[0] > elev_top:
+        h = elev_top - np.array(elev[1:])
+    elif elev[-1] > elev_top:
+        h = elev_top - np.array(elev[:-1])
+    else:
+        h = elev_top - np.array(elev)
+
+# Calculate the cross-sectional area for all points at or below elev_top
+# using the Trapezium rule.
+    npts = len(h)
+    term0 = np.sum(h[1:npts-1])
     term1 = (h[0] + h[-1]) / 2.0
     Ayz = delta_x * (term0 + term1)
+
+# Add on the final part of the area where the valley heights bracket the valley top
+    if elev[0] > elev_top:
+        x_int = delta_x * (elev_top - elev[1]) / (elev[0] - elev[1])
+        Ayz += ((elev_top + elev[1])/2) * x_int
+    elif elev[-1] > elev_top:
+        x_int = delta_x * (elev_top - elev[-2]) / (elev[-1] - elev[-2])
+        Ayz += ((elev_top + elev[-2])/2) * x_int
 
     return Ayz
 
@@ -258,10 +365,10 @@ def diagnostic_plots(cube, xpts, ypts, centre_point):
     top_edge = lats[centre_point[1] + radius]
     bottom_edge = lats[centre_point[1] - radius]
 
-    print('centre_point = ', centre_point)
-    print('bottom-edge: centre_point[1] - radius = ', centre_point[1] - radius)
-    print('top edge:    centre_point[1] + radius = ', centre_point[1] + radius)
-    print('lats = ', lats[centre_point[1]-radius: centre_point[1]+radius+1])
+#   print('centre_point = ', centre_point)
+#   print('bottom-edge: centre_point[1] - radius = ', centre_point[1] - radius)
+#   print('top edge:    centre_point[1] + radius = ', centre_point[1] + radius)
+#   print('lats = ', lats[centre_point[1]-radius: centre_point[1]+radius+1])
 
     xcoords = [lons[x] for x in xpts]
     ycoords = [lats[y] for y in ypts]
@@ -270,9 +377,6 @@ def diagnostic_plots(cube, xpts, ypts, centre_point):
 #   lat_con = iris.Constraint(latitude = lambda y: bottom_edge <= y <= top_edge)
 #   lon_con = iris.Constraint(longitude = lambda x: left_edge <= x <= right_edge)
     cube_region = cube.intersection(longitude=(left_edge, right_edge), latitude=(top_edge, bottom_edge))
-
-#   xcoords = [lons[x] for x in xpts]
-#   ycoords = [lats[y] for y in ypts]
 
 # Coordinates of perpendicular line (latitudes and longitudes)
     xcentre = lons[centre_point[0]]
@@ -300,6 +404,10 @@ def diagnostic_plots(cube, xpts, ypts, centre_point):
 def main():
 
     datadir = '/data/users/hadmi/SRTM/'
+    width = []
+    height = []
+    valley_area = []
+    taf = []
 
 # Distance over which to find the valley top in pixels.
 # distance is in pixels, roughly 90 m per pixel
@@ -313,10 +421,6 @@ def main():
 
 # Get the coordinates of the entire valley, as list of size (n, 2)
     valley_coords = read_valley_coordinates(datadir, valley_head)
-
-# Add a copy of the first and last coords to the ends
-#   valley_coords.insert(0, valley_coords[0])
-#   valley_coords.extend(valley_coords[-1])
 
 # Loop over the valley coordinates
     for n in list(range(1, len(valley_coords))):
@@ -345,10 +449,19 @@ def main():
         print([(x,y) for x, y in zip(xpts, ypts)])
         print('Centre point:', centre_point)
 
-# Plot the elevation data around the valley bottom and the perpendicular line
-# for a visual check.
-        diagnostic_plots(cube, xpts, ypts, centre_point)
-        taf = calculate_taf(cube, xpts, ypts, centre_point)
+#       diagnostic_plots(cube, xpts, ypts, centre_point)
+# Get the valley width (W), height (H), cross-sectional area (A) and TAF (T)
+        W, H, A, T = calculate_taf(cube, xpts, ypts, centre_point)
+
+        width.append(W)
+        height.append(H)
+        valley_area.append(A)
+        taf.append(T)
+
+    df = pd.DataFrame({'width': width, 'height': height, 'area': valley_area, 'taf': taf})
+    opath = '/home/h03/hadmi/Python/MedGOLD/cold_air_pooling/data/'
+    ofilename = 'tributary_{:d}_{:d}_taf.csv'.format(valley_head[0], valley_head[1])
+    df.to_csv(os.path.join(opath, ofilename), index=False)
 
 
 if __name__ == '__main__':
