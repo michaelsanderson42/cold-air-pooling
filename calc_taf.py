@@ -4,6 +4,7 @@ import iris
 import iris.plot as iplt
 import matplotlib.pyplot as plt
 from scipy.signal import argrelextrema
+from scipy.stats import linregress
 from scipy import interpolate
 import pandas as pd
 
@@ -37,11 +38,10 @@ def read_valley_coordinates(datadir, valley_head):
     return coords.tolist()
 
 
-def calc_perpendicular_line(coord, slope):
+def calc_perpendicular_line(slope):
     '''
-    Calculates the perpendicular to the line defined by slope m and intercept c
-    at point coord
-    :param coord: Point through which the perpendicular must pass
+    Calculates the slope of a line perpendicular to that defined by 'slope'.
+
     :param slope: slope of the straight line; a value of 999 means the line is vertical
      (i.e. the slope would be infinite)
 
@@ -70,21 +70,19 @@ def points_along_line(centre_point, radius, slope):
     :returns: A list of pixel coordinates along the line
     '''
 
-# Find the slope of a perpendicular line (m_p) through the centre point, a transect across the valley.
-    centre_point = [valley_coords[0,n], valley_coords[1,n]]
-    m_p = calc_perpendicular_line(centre_point, slope)
+# Find the slope of a perpendicular line (m_p), which will define a transect across the valley.
+    m_p = calc_perpendicular_line(slope)
 
-# Calculate the coordinates of points along the transect of length 2*radius
+# Calculate the coordinates of points along a transect of length 2*radius
     if m_p == 0:
 # Transect is horizontal
-        for r in list(range(-radius, radius+1)):
-            pline_coords.append([centre_point[0] + r, centre_point[1]])
+        pline_coords = [[centre_point[0]+r, centre_point[1]] for r in list(range(-radius, radius+1))]
     elif m_p == 999.0:
 # Transect is vertical
-        for r in list(range(-radius, radius+1)):
-            pline_coords.append([centre_point[0], centre_point[1] + r])
+        pline_coords = [[centre_point[0], centre_point[1]+r] for r in list(range(-radius, radius+1))]
     else:
 # Transect is diagonal
+        pline_coords = []
         alpha = np.arctan(m_p)
         for r in list(range(-radius, radius+1)):
             h = r * np.sin(alpha)
@@ -349,7 +347,7 @@ def calc_valley_xsect_area(elev, xpts, ypts, elev_top):
     return valley_width+x_int, Ayz
 
 
-def diagnostic_plots(cube, xpts, ypts, centre_point):
+def diagnostic_plots(cube, xpts, ypts, centre_point, z_transect):
     '''
     Creates diagnostic plots to check valley cross-sections
 
@@ -357,6 +355,7 @@ def diagnostic_plots(cube, xpts, ypts, centre_point):
     xpts -- x-coordinates (in array indices) of line across valley
     ypts -- y-coordinates (in array indices) of line across valley
     centre_point -- Coordinates of point in centre of valley (should be the lowest point)
+    z_transect -- Elevations of points along the transect across the valley.
     '''
 
 # Create plots to check has worked
@@ -376,8 +375,8 @@ def diagnostic_plots(cube, xpts, ypts, centre_point):
 #   print('top edge:    centre_point[1] + radius = ', centre_point[1] + radius)
 #   print('lats = ', lats[centre_point[1]-radius: centre_point[1]+radius+1])
 
-    xcoords = [lons[x] for x in xpts]
-    ycoords = [lats[y] for y in ypts]
+#   xcoords = [lons[x] for x in xpts]
+#   ycoords = [lats[y] for y in ypts]
 
 # Set up constraints and extract the block of pixels
 #   lat_con = iris.Constraint(latitude = lambda y: bottom_edge <= y <= top_edge)
@@ -391,18 +390,18 @@ def diagnostic_plots(cube, xpts, ypts, centre_point):
 # First subplot showing elevations around centre point and the perpendicular line
     plt.subplot(2,1,1)
     iplt.pcolormesh(cube_region)
-    plt.plot(xcoords, ycoords, marker='None', markersize=2, linestyle='-', color='white')
+#   plt.plot(xcoords, ycoords, marker='None', markersize=2, linestyle='-', color='white')
     plt.plot(xcentre, ycentre, marker='o', markersize=2, linestyle='None', color='red')
 
 # Second subplot showing the elevations along the perpendicular line and at the centre point
     plt.subplot(2,1,2)
-    xvalues = list(range(len(xpts)))
+    xvalues = list(range(len(z_transect)))
     xmid = xvalues[len(xvalues) // 2]
-    yvalues = [cube.data[py, px] for px, py in zip(xpts, ypts)]
-    print(yvalues)
-    plt.plot(xvalues, yvalues, 'bo')
-    plt.plot(xmid, cube.data[centre_point[1], centre_point[0]], marker='s', linestyle='None', color='green')
-    plt.title('Elevation along perpendicular')
+#   print(z_transect)
+    plt.plot(xvalues, z_transect, 'bo')
+    print(xmid, z_transect[xmid])
+    plt.plot(xmid, z_transect[xmid], marker='s', linestyle='None', color='green')
+    plt.title('Elevation along transect')
 
     plt.show()
 
@@ -424,8 +423,15 @@ def calc_slope(valley_coords, n, k=5):
     else:
         k2 = k // 2
 
-    x = [valley_coords[j][0] for j in list(range(n-k2, n+k2+1))]
-    y = [valley_coords[j][1] for j in list(range(n-k2, n+k2+1))]
+    lo = n-k2
+    if lo < 0:
+        lo = 0
+    hi = n+k2
+    if hi > len(valley_coords):
+        hi = len(valley_coords)
+
+    x = [valley_coords[j][0] for j in list(range(lo, hi))]
+    y = [valley_coords[j][1] for j in list(range(lo, hi))]
 
 # Check for horizontal / vertical points
     if all(i == x[0] for i in x):
@@ -469,30 +475,35 @@ def main():
 # Get the coordinates of the entire valley, as list of size (n, 2)
     valley_coords = read_valley_coordinates(datadir, valley_head)
 
+# A straight line will be fitted through 'k' points centred at 'centre-point'
+    k = 5
+
 # Loop over the valley coordinates
     for n in list(range(1, len(valley_coords))):
 # Find the slope of a line through 'k' points centred at 'centre-point'
         print('n=', n)
         centre_point = [valley_coords[n][0], valley_coords[n][1]]
-        slope = calc_slope(valley_coords, n, k=5)
-        print(x0, y0, x1, y1, slope)
+        slope = calc_slope(valley_coords, n, k=k)
+        print('Slope through ',k,' points is ', slope)
 
-# Find the elevations of points along the transect using bilinear interpolation.
-
-# Get the x,y coordinates of points along the transect
+# Get the x,y coordinates of points along the transect, which will be
+# perpendicular to the line following the valley floor.
         xpts, ypts = points_along_line(centre_point, radius, slope)
-#       print('Points along perpendicular line')
-#       print([(x,y) for x, y in zip(xpts, ypts)])
-#       print('Centre point:', centre_point)
-
-#       diagnostic_plots(cube, xpts, ypts, centre_point)
+        print('Coords of points along perpendicular line')
+        print([(x,y) for x, y in zip(xpts, ypts)])
+        print('Centre point:', centre_point)
 
 # Get the elevations along the transect using bilinear interpolation
         z_transect = interpol_dem_2d(xpts, ypts)
-# Get the valley width (W), height (H), cross-sectional area (A) and TAF (T)
-        W, H, A, taf = calculate_taf(z_transect, xpts, ypts, centre_point)
+        print('Elevations along transect across valley:')
+        print(z_transect)
 
-        print(W, H, A, taf)
+        diagnostic_plots(cube, xpts, ypts, centre_point, z_transect)
+
+# Get the valley width (W), height (H), cross-sectional area (A) and TAF (T)
+        W, H, A, T = calculate_taf(z_transect, xpts, ypts, centre_point)
+
+        print(W, H, A, T)
 
         width.append(W)
         height.append(H)
