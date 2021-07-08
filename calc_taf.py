@@ -7,6 +7,7 @@ from scipy.signal import argrelextrema
 from scipy.stats import linregress
 from scipy import interpolate
 from Haversine import haversine
+from utils import rotate_points
 import pandas as pd
 
 
@@ -93,7 +94,7 @@ def points_along_line(centre_point, radius, slope):
     return pline_coords
 
 
-def find_local_maxima(cube, z_transect, xpts, ypts, centre_point, order=3):
+def find_local_maxima(cube, z_transect, pts, centre_point, order=3):
     '''
     Finds the coordinates of the maxima in the DEM data along the given line,
     each side of the centre point.
@@ -103,7 +104,7 @@ def find_local_maxima(cube, z_transect, xpts, ypts, centre_point, order=3):
 
     cube -- Iris cube containing DEM data for the Douro region (only needed for plotting).
     z_transect -- Elevations of all points along the transect across the valley.
-    xpts, ypts -- Array indices of the transect across the valley.
+    pts -- Array indices of the transect across the valley.
     centre_point -- Array indices of the centre of the line, corresponding to the valley floor.
     order -- Number of points on each side of a given point to use for the comparison.
     '''
@@ -161,9 +162,8 @@ def find_local_maxima(cube, z_transect, xpts, ypts, centre_point, order=3):
                 iright += 1
                 break
     else:
+        v = 0.0
         elev_valley_xsection = []
-        ileft = 0
-        iright = 0
 
 #   print('Elevation along perpendicular:')
 #   print(list(elev))
@@ -172,9 +172,10 @@ def find_local_maxima(cube, z_transect, xpts, ypts, centre_point, order=3):
 #   print(list(elev_valley_xsection))
 
 # Diagnostic plot
-    plot_valley_edges(cube, xpts, ypts, centre_point, v, z_transect, [ileft, iright])
+    if abs(iright-ileft+1) >= 10:
+        plot_valley_edges(cube, pts, centre_point, v, z_transect, [ileft, iright])
 
-    return v, elev_valley_xsection
+    return v, [ileft, iright], elev_valley_xsection
 
 
 def get_coords_of_indices(cube, xpts, ypts):
@@ -199,13 +200,12 @@ def get_coords_of_indices(cube, xpts, ypts):
     return (xcoords, ycoords)
 
 
-def plot_valley_edges(cube, xpts, ypts, centre_point, elev_valley_top, z_transect, idx_maxima):
+def plot_valley_edges(cube, pts, centre_point, elev_valley_top, z_transect, idx_maxima):
     '''
     Creates diagnostic plots to check valley cross-sections
 
     cube -- Iris cube containing DEM for entire Douro valley domain
-    xpts -- x-coordinates (in array indices) of line across valley
-    ypts -- y-coordinates (in array indices) of line across valley
+    pts -- x- and y-coordinates (in array indices) of line across valley
     centre_point -- Coordinates of point in centre of valley (should be the lowest point)
     '''
 
@@ -213,9 +213,9 @@ def plot_valley_edges(cube, xpts, ypts, centre_point, elev_valley_top, z_transec
     fig = plt.figure()
 
 # Find the edges of a block of pixels centred on the valley mid-point.
+    radius = len(z_transect) // 2
     lats = cube.coord('latitude').points
     lons = cube.coord('longitude').points
-    radius = len(xpts) // 2
     left_edge = lons[centre_point[0] - radius]
     right_edge = lons[centre_point[0] + radius]
     top_edge = lats[centre_point[1] + radius]
@@ -227,6 +227,7 @@ def plot_valley_edges(cube, xpts, ypts, centre_point, elev_valley_top, z_transec
 #   print('lats = ', lats[centre_point[1]-radius: centre_point[1]+radius+1])
 
 # Coordinates of perpendicular line (latitudes and longitudes)
+    xpts, ypts = np.array(pts).T
     xcoords, ycoords = get_coords_of_indices(cube, xpts, ypts)
 
 # Set up constraints and extract the block of pixels
@@ -244,7 +245,7 @@ def plot_valley_edges(cube, xpts, ypts, centre_point, elev_valley_top, z_transec
 # Second subplot showing the elevations along the perpendicular line and at the centre point
     plt.subplot(2,1,2)
     xvalues = list(range(len(z_transect)))
-    xmid = xvalues[len(z_transect) // 2]
+    xmid = xvalues[radius]
 
     plt.plot(xvalues, z_transect, 'bo')
     plt.plot([xvalues[0], xvalues[-1]], [elev_valley_top, elev_valley_top], marker='None', linestyle='--', color='grey')
@@ -256,7 +257,7 @@ def plot_valley_edges(cube, xpts, ypts, centre_point, elev_valley_top, z_transec
     plt.show()
 
 
-def calculate_taf(cube, z_transect, pts, centre_point):
+def calculate_taf(cube, centre_point, slope, radius, interpol_dem_2d):
     '''
     Calculates the topographical amplification factor (TAF) at the given location.
 
@@ -267,11 +268,56 @@ def calculate_taf(cube, z_transect, pts, centre_point):
     Returns: The TAF, valley cross-sectional area, width and height
     '''
 
-    xpts, ypts = np.array(pts).T
+# order is the number of points used to identify local maxima.
+# Order = 2 means 2 points either side of a given point will be tested.
     order = 2
+    z = cube.data.data
+
+# Get the x,y coordinates of points along a transect across the valley, which will be
+# perpendicular to the line following the valley floor.
+    pts = points_along_line(centre_point, radius, slope)
+    print('Coords of points along perpendicular line')
+    print(pts)
+    print('Centre point:', centre_point)
+
+# Get the elevations along the transect, using bilinear interpolation if needed.
+    if slope == 0.0 or slope == 999.0:
+# Transect is vertical or horizontal, no interpolation needed.
+        z_transect = np.array([z[p[1],p[0]] for p in pts])
+    else:
+# Set a list of points ordered (y,x), as the DEM data are ordered (lat, lon)
+        pts_r = [(p[1],p[0]) for p in pts]
+        z_transect = interpol_dem_2d(pts_r)
+
+    print('Elevations along transect across valley:')
+    print(z_transect)
+
+#   diagnostic_plots(cube, pts, centre_point, radius, z_transect)
 
 # Find the elevation of the valley top and the subset of the elevations that describe the valley only.
-    elev_top, elev_xsection = find_local_maxima(cube, z_transect, xpts, ypts, centre_point, order=order)
+    elev_top, idx_edges, elev_xsection = find_local_maxima(cube, z_transect, pts, centre_point, order=order)
+    print(idx_edges, elev_top)
+
+# If valley width is too wide, the transect may follow the valley instead of crossing it,
+# or follow the line of a tributary.
+    n_attempts = 1
+    while (abs(idx_edges[1] - idx_edges[0]) > 10) and (n_attempts < 7):
+# Rotate the transect ...
+        angle = 22.5 * n_attempts
+        new_pts = rotate_points(pts, centre_point, angle)
+
+# ... and recalculate the valley width
+        pts_r = [(p[1],p[0]) for p in new_pts]
+        z_transect = interpol_dem_2d(pts_r)
+        elev_top, idx_edges, elev_xsection = find_local_maxima(cube, z_transect, new_pts, centre_point, order=order)
+        n_attempts += 1
+        print('After attempt ', n_attempts)
+        print(z_transect)
+        print(idx_edges, elev_top)
+
+    if n_attempts > 1:
+        pts = new_pts[:]
+
     if len(elev_xsection) == 0:
         print('Local maxima not found for {:d},{:d}, cannot calculate TAF'.format(centre_point[0], centre_point[1]))
         W = -99.0
@@ -281,7 +327,7 @@ def calculate_taf(cube, z_transect, pts, centre_point):
     else:
 
 # Calculate the valley width (W), height (H) and cross-sectional area(A) [Ayz]
-        W, H, A = calc_valley_WHA(cube, elev_xsection, xpts, ypts, centre_point, elev_top)
+        W, H, A = calc_valley_WHA(cube, elev_xsection, pts, centre_point, elev_top)
 
 # TAF = (W / Ayz) / (1/H)
         taf = (W / A) * H
@@ -290,14 +336,13 @@ def calculate_taf(cube, z_transect, pts, centre_point):
     return (W, H, A, taf)
 
 
-def calc_valley_WHA(cube, elev, xpts, ypts, centre_point, elev_top):
+def calc_valley_WHA(cube, elev, pts, centre_point, elev_top):
     '''
     Calculate the width, height and area of the valley
 
     elev -- 1D array containing the elevation data for the valley cross-section
             only (not necessarily the whole transect)
-    xpts -- The x-coordinates of the transect across the valley
-    ypts -- The y-coordinates of the transect across the valley
+    pts -- The coordinates of the transect across the valley
     centre_point -- The x- and y-coordinates of the centre of the valley
     elev_top -- elevation of top of valley
     '''
@@ -307,6 +352,7 @@ def calc_valley_WHA(cube, elev, xpts, ypts, centre_point, elev_top):
     valley_height = elev_top - elev_lo
 
 # Get the longitudes and latitudes of the array indices in xpts, ypts
+    xpts, ypts = np.array(pts).T
     tlons, tlats = get_coords_of_indices(cube, xpts, ypts)
 
 # Calculate the distance between two points located at the centre of the transect in metres
@@ -322,7 +368,7 @@ def calc_valley_WHA(cube, elev, xpts, ypts, centre_point, elev_top):
 
 def calc_valley_xsect_area(elev, t_distance, elev_top):
     '''
-    Calculate the width (W) and cross-sectional area of the valley (Ayz) using the Trapezium rule
+    Calculate the width (W) and cross-sectional area of the valley (Ayz) using the Trapezium rule.
     The distance between pairs of points of the transect is assumed to be constant, although
     in reality it will vary slightly.
 
@@ -496,6 +542,7 @@ def main():
     k = 5
 
 # Loop over the valley coordinates
+    n0 = len(valley_coords)-10
     for n in list(range(1, len(valley_coords))):
 # Find the slope of a line through 'k' points centred at 'centre-point'
         print('n=', n)
@@ -503,31 +550,8 @@ def main():
         slope = calc_slope(valley_coords, n, k=k)
         print('Slope through ',k,' points is ', slope)
 
-# Get the x,y coordinates of points along the transect, which will be
-# perpendicular to the line following the valley floor.
-        pts = points_along_line(centre_point, radius, slope)
-        print('Coords of points along perpendicular line')
-# Set a list of points ordered (y,x), as the DEM data are ordered (lat, lon)
-        print(pts)
-        print('Centre point:', centre_point)
-
-# Get the elevations along the transect using bilinear interpolation
-        if slope == 0.0 or slope == 999.0:
-# Transect is vertical or horizontal, no interpolation needed.
-            z_transect = np.array([z[p[1],p[0]] for p in pts])
-        else:
-            pts_r = [(p[1],p[0]) for p in pts]
-            z_transect = interpol_dem_2d(pts_r)
-
-        print('Elevations along transect across valley:')
-        print(z_transect)
-
-#       diagnostic_plots(cube, pts, centre_point, radius, z_transect)
-
 # Get the valley width (W), height (H), cross-sectional area (A) and TAF (T)
-        W, H, A, T = calculate_taf(cube, z_transect, pts, centre_point)
-
-        print(W, H, A, T)
+        W, H, A, T = calculate_taf(cube, centre_point, slope, radius, interpol_dem_2d)
 
         width.append(W)
         height.append(H)
