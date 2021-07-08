@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 from scipy.signal import argrelextrema
 from scipy.stats import linregress
 from scipy import interpolate
+from Haversine import haversine
 import pandas as pd
 
 
@@ -100,6 +101,7 @@ def find_local_maxima(cube, z_transect, xpts, ypts, centre_point, order=3):
     Returns the elevations of the valley cross-section, excluding points outside
     of the valley.
 
+    cube -- Iris cube containing DEM data for the Douro region (only needed for plotting).
     z_transect -- Elevations of all points along the transect across the valley.
     xpts, ypts -- Array indices of the transect across the valley.
     centre_point -- Array indices of the centre of the line, corresponding to the valley floor.
@@ -266,9 +268,10 @@ def calculate_taf(cube, z_transect, pts, centre_point):
     '''
 
     xpts, ypts = np.array(pts).T
+    order = 2
 
 # Find the elevation of the valley top and the subset of the elevations that describe the valley only.
-    elev_top, elev_xsection = find_local_maxima(cube, z_transect, xpts, ypts, centre_point)
+    elev_top, elev_xsection = find_local_maxima(cube, z_transect, xpts, ypts, centre_point, order=order)
     if len(elev_xsection) == 0:
         print('Local maxima not found for {:d},{:d}, cannot calculate TAF'.format(centre_point[0], centre_point[1]))
         W = -99.0
